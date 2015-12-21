@@ -94,6 +94,41 @@ struct S {
 }
 ```
 
+### access control
+
+```swift
+struct S {
+	let s: String
+	private let i: Int
+
+	// user declares:
+	memberwise init() {
+		// compiler error, i memberwise initialization cannot be synthesized 
+		// for i because it is less visible than the initializer itself
+	}
+}
+```
+
+### lazy properties and incompatible behaviors
+
+```swift
+struct S {
+	let s: String
+	lazy var i: Int = InitialValueForI()
+
+	// user declares:
+	memberwise init() {
+	}
+	// compiler synthesizes:
+	init(s: String) {
+		self.s = s
+		// compiler does not synthesize initialization for i 
+		// because it contains a behavior that is incompatible with 
+		// memberwise initialization
+	}
+}
+```
+
 ### @nomemberwise properties
 
 ```swift
@@ -123,21 +158,6 @@ struct S {
 	// user declares:
 	memberwise init() {
 		// compiler error, i is not initialized
-	}
-}
-```
-
-### access control
-
-```swift
-struct S {
-	let s: String
-	private let i: Int
-
-	// user declares:
-	memberwise init() {
-		// compiler error, i memberwise initialization cannot be synthesized 
-		// for i because it is less visible than the initializer itself
 	}
 }
 ```
