@@ -15,7 +15,7 @@ Swift-evolution thread: [Proposal Draft: flexible memberwise initialization](htt
 
 When designing initializers for a type we are currently faced with the unfortunate fact that the more flexibility we wish to offer users the more boilerplate we are required to write and maintain.  We usually end up with more boilerplate and less flexibility than desired.  There have been various strategies employed to mitigate this problem.  
 
-Sometimes properties that should be immutable are made mutable and a potentially unsafe ad-hoc two-phase initialization pattern is employed where an instance is initialized and then configured immediately afterwards.  When properties that need to be mutable have a sensible default value they are simply default-initialized and the same post-initialization configuration strategy is employed when the default value is not correct for the intended use.  This results in an instance which passes through several incorrect states before it is correctly initialized for its intended use.
+Sometimes properties that should be immutable are made mutable and a potentially unsafe ad-hoc two-phase initialization pattern is employed where an instance is initialized and then configured immediately afterwards.  When properties that need to be mutable have a sensible default value they are simply default-initialized and the same post-initialization configuration strategy is employed when the default value is not correct for the intended use.  This results in an instance which may pass through several incorrect states before it is correctly initialized for its intended use.
 
 Flexible and concise initialization for both type authors and consumers will encourages using immutability where possible and removes the need for boilerplate from the concerns one must consider when designing the intializers for a type.
 
@@ -28,15 +28,15 @@ Quoting [Chris Lattner](https://lists.swift.org/pipermail/swift-evolution/Week-o
 	4) var properties with default initializers should have their parameter to the synthesized initializer defaulted.
 	5) lazy properties with memberwise initializers have problems (the memberwise init eagerly touches it).
 
-Add to the list “all or nothing”.  The compiler generates the entire initializer and does not help to eliminate boilerplate for any other initializers where it may be desirable to use memberwise intiialzation for a subset of members and initialize others manually.
+Add to the list “all or nothing”.  The compiler generates the entire initializer and does not help to eliminate boilerplate for any other initializers where it may be desirable to use memberwise intialization for a subset of members and initialize others manually.
 
-It is common to have a type with a number of public members that are intended to be configured by clients, but also with some private state comprising implementation details of the type.  This is especially prevalent in UI code which may expose many properties for configuring visual appearance, etc.  Flexibile memberwise initialization can provide great benefit in these use cases, but it becomes immediately useless if it is "all or nothing".  
+It is common to have a type with a number of public members that are intended to be configured by clients, but also with some private state comprising implementation details of the type.  This is especially prevalent in UI code which may expose many properties for configuring visual appearance, etc.  Flexibile memberwise initialization can provide great benefit in these use cases, but it immediately becomes useless if it is "all or nothing".  
 
 We need a flexible solution that can synthesize memberwise initialization for some members while allowing the type auther full control over initialization of implementation details.
 
 ## Proposed solution
 
-I propose adding a `memberwise` declaration for initializers which allows them to *opt-in* to synthesis of memberwise initialization and a `@nomemberwise` property attribute allowing them to *opt-out* of such synthesis. 
+I propose adding a `memberwise` declaration modifier for initializers which allows them to *opt-in* to synthesis of memberwise initialization and a `@nomemberwise` property attribute allowing them to *opt-out* of such synthesis. 
 
 This section of the document contains several examples of the solution in action.  Specific details on how synthesis is performed are contained in the detailed design.
 
@@ -229,7 +229,7 @@ Properties will be able to opt-out of memberwise initialization with the `@nomem
 
 ### Overview
 
-Throughout this design the term **memberwise initialization parameter** is used to refer to initializer parameters synthesized by the compiler as part of memberwise initialization synthesis.
+Throughout this design the term **memberwise initialization parameter** is used to refer to initializer parameters synthesized by the compiler as part of **memberwise initialization synthesis**.
 
 ### Algorithm
 
@@ -341,6 +341,6 @@ The downside of this approach is that the boilerplate parameter declarations gro
 
 Proponents of this approach believe it provides additional clarity and control over the current proposal.  
 
-Under the current proposal full control is still available.  It requires initializers to opt-in to memberwise initialization.  The boilerplate saved in the examples on the list is relatively minimal and is tolerable in situations where full control of initialization is required.
+Under the current proposal full control is still available.  It requires initializers to opt-in to memberwise initialization.  When full control is necessary an initializer will simply not opt-in to memberwise initialization synthesis.  The boilerplate saved in the examples on the list is relatively minimal and is tolerable in situations where full control of initialization is required.
 
 I believe the `memberwise` declaration modifier on the initializer makes it clear that the compiler will synthesize additional parameters.  Furthermore, IDEs and generated documentation will contain the full, synthesized signature of the initializer.  
