@@ -9,7 +9,7 @@
 
 The Swift compiler is currently able to generate a memberwise initializer for us in some circumstances however there are currently many limitations to this.  This proposal build on the idea of compiler generated memberwise initialization making it available to any initializer that opts in.
 
-Swift-evolution thread: [Proposal Draft: flexible memberwise initialization](https://lists.swift.org/pipermail/swift-evolution)
+Swift-evolution thread: [Proposal Draft: flexible memberwise initialization](https://lists.swift.org/pipermail/swift-evolution/Week-of-Mon-20151221/003902.html)
 
 ## Motivation
 
