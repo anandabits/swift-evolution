@@ -251,7 +251,7 @@ When the compiler performs memberwise initialization synthesis it will determine
 
 2. If any of the properties in that set produced in step one are directly initialized in the body of the initializer **or** have a name identical to an external parameter name for the intitializer remove them from the set.  If the initializer contains a parameter with an external label matching the name of a property that is eligible for memberwise intialization it must initialize that property directly.
 
-3. When performing memberwise initialization for a subclass, inspect the call it makes to its superclass initialzier.  Determine the set of *synthesized memberwise initialization parameters* that exist for the superclass initializer that is called.  These parameters **may** participate in *memberwise initialization parameter forwarding*.  The set is known as the set of *forwarded memberwise initialization parameters*.
+3. When performing memberwise initialization for a subclass, inspect the call it makes to its superclass initialzer.  Determine the set of *synthesized memberwise initialization parameters* that exist for the superclass initializer that is called.  These parameters **may** participate in *memberwise initialization parameter forwarding*.  The set is known as the set of *forwarded memberwise initialization parameters*.
 
 4. If the subclass initializer provides arguments for any of the parameters identified in step three remove them from the set.  Because a value is provided for them directly synthesized forwarding is not necessary.
 
