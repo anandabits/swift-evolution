@@ -38,7 +38,7 @@ We need a flexible solution that can synthesize memberwise initialization for so
 
 ## Proposed solution
 
-I propose adding a `memberwise` declaration modifier for initializers which allows them to *opt-in* to synthesis of memberwise initialization and a `@nomemberwise` attribute allowing properties to *opt-out* of such synthesis and memberwise initializers to explicitly prevent memberwise initialization of specific properties. 
+I propose adding a `memberwise` declaration modifier for initializers which allows them to *opt-in* to synthesis of memberwise initialization and a `@default` attribute allowing `let` properties to specify a default value for the parameter the compiler synthesizes in memberwise initializers. 
 
 The programmer model is as straighforward as possible.  
 
@@ -46,14 +46,19 @@ The set of properties that receive memberwise initialization parameters is deter
 
 1. Their access level is *at least* as visible as the memberwise initializer.
 2. They do not have a behavior which prohibits memberwise initialization.
-3. The property **is not** annotated with the `@nomemberwise` attribute.
-4. The property **is not** included in the `@nomemberwise` attribute list attached of the initializer.  If `super` is included in the `@nomemberwise`
+3. If the property is a `let` property it *may not* have an initial value.
+
+Two additional eligibiliy rules may be added by the `@nomemberwise` enhancement in the future.
 
 The parameters are synthesized in the parameter list in the location of the `...` placeholder.  They are ordered as follows:
 
-1. All properties **without** default values precede properties **with** default values.
+1. All parameters **without** default values precede parameters **with** default values.
 2. Within each group, superclass properties precede subclass properties.
-3. Finally, follow declaration order
+3. Finally, follow property declaration order.
+
+The default value for a memberwise parameter is the `@default` value for the its corresponding property if one exists or the initial value if one does not exist and the property is a `var`.
+
+## Examples
 
 This section of the document contains several examples of the solution in action.  It *does not* cover every possible scenario.  If there are concrete examples you are wondering about please post them to the list.  I will be happy to discuss them and will add any examples we consider important to this section as the discussion progresses.
 
@@ -76,14 +81,14 @@ struct S {
 }
 ```
 
-### Properties with initial values
+### Var properties with initial values
 
-NOTE: this example is not valid under the current initialization rules.  I feel strongly that this example *should* be possible and discuss it further in the detailed design section.  The example can be made valid under the current initialization rules if the properties are changed from `let` to `var`.
+NOTE: this example is only possible for `var` properties due to the initialization rules for `let` properties.
 
 ```swift
 struct S {
-	let s: String = "hello"
-	let i: Int = 42
+	var s: String = "hello"
+	var i: Int = 42
 
 	// user declares:
 	memberwise init(...) {}
@@ -95,7 +100,7 @@ struct S {
 }
 ```
 
-If the initialization rules *are not* modified it would be possible to support this use case with an additional attribute:
+### Let properties with default values
 
 ```swift
 struct S {
@@ -112,33 +117,7 @@ struct S {
 }
 ```
 
-This is not a great option, but it is better than requiring manual initialization when this is the correct implementation.
-
-### Partial memberwise initialization
-
-NOTE: The example in this secion doesn't really save a lot.  Imagine ten properties with only one excluded from memberwise initialization.
-
-```swift
-struct S {
-	let s: String
-	let i: Int
-
-	// user declares:
-	@nomemberwise(i)
-	memberwise init(...) {
-		i = getTheValueForI()
-	}
-	// compiler synthesizes (suppressing memberwise initialization for properties mentioned in the @nomemberwise attribute):
-	init(s: String) {
-		/* synthesized */ self.s = s
-		
-		// body of the user's initializer remains
-		i = getTheValueForI()
-	}
-}
-```
-
-### access control
+### Access control
 
 ```swift
 struct S {
@@ -172,7 +151,7 @@ struct S {
 }
 ```
 
-### lazy properties and incompatible behaviors
+### Lazy properties and incompatible behaviors
 
 ```swift
 struct S {
@@ -193,7 +172,167 @@ struct S {
 }
 ```
 
-### @nomemberwise properties
+### Delegating and convenience initializers
+
+NOTE: the call to the chained initializer **must** be unambiguous when only the explitly provided arguments are considered.  However it is allowed to be invalid on its own as long as it becomes valid after forwarding of memberwise arguments is completed (i.e. forwarding can be used to supply memberwise arguments where the parameter *does not* have a default value).
+
+```swift
+
+struct S {
+	private let s: String = "hello"
+	let i: Int = 42
+
+	// user declares:
+	memberwise init(...) {}
+	// compiler synthesizes:
+	private init(s: String = "hello", i: Int = 42) {
+		self.s = s
+		self.i = i
+	}
+	
+	// user declares:
+	memberwise init(describable: CustomStringConvertible, ...) {
+		self.init(s: describable.description, ...)
+	}
+	// compiler synthesizes (adding forwarded memberwise parameters):
+	init(describable: CustomStringConvertible, i: Int = 42) {
+		self.init(s: describable.description, i: i)
+	}
+}
+```
+
+### Subclass designated initializers
+
+NOTE: the call to the superclass initializer **must** be unambiguous when only the explitly provided arguments are considered.  However it is allowed to be invalid on its own as long as it becomes valid after forwarding of superclass memberwise arguments is completed (i.e. forwarding can be used to supply memberwise arguments where the parameter *does not* have a default value).
+
+```swift
+class Base {
+	let baseProperty: String
+
+	// user declares:
+	memberwise init(...) {}
+	// compiler synthesizes:
+	init(baseProperty: String) {
+		self.baseProperty = baseProperty
+		super.init()
+	}
+}
+
+class Derived: Base {
+	let derivedProperty: Int
+
+	// user declares:
+	memberwise init(...) { super.init(...) }
+	// compiler synthesizes (adding forwarded memberwise parameters):
+	init(baseProperty: String, derivedProperty: Int) {
+		self.derivedProperry = derivedProperty
+		super.init(baseProperty: baseProperty)
+	}
+}
+
+```
+
+## Detailed design
+
+### Syntax changes
+
+This proposal introduces three new syntactic elements: the `memberwise` initializer declaration modifier, the `...` memberwise parameter placeholder, and the `@default` attribute which can be used to provide a default value for the synthesized memberwise parameters corresponding to `let` properties.
+
+Initializers opt-in to synthesized memberwise initialization with the `memberwise` declaration modifier.  This modifier will cause the compiler to follow the procedure outlined later in the design to synthesize memberwise parameters as well as memberwise initialization code at the beginning of the initializer body.  
+
+### Overview
+
+Throughout this design the term **memberwise initialization parameter** is used to refer to initializer parameters synthesized by the compiler as part of **memberwise initialization synthesis**.
+
+#### Terminology
+
+* **direct memberwise initialization parameters** are parameters which are synthesized by the compiler and initialized directly in the body of the initializer.
+
+* **forwarded memberwise initialization parameters** are parameters which are synthesized by the compiler and provided to another initializer that is called in the body of the initializer.
+
+* **synthesized memberwise initialization parameters** or simply *memberwise initialization parameters* is the full set of parameters synthesized by the compiler which includes both direct and forwarded memberwise initialization parameters.
+
+#### Memberwise initializer chaining
+
+Convenience initializers and delegating memberwise initializers **must** call an initializer that is also a memberwise initializer in order to allow the memberwise arguments to be forwarded.  
+
+Memberwise designated initializers in subclasses **must** call a memberwise initializer in the superclass.
+
+When calling an initializer with lower visibility arguments **must** be provided directly in the initializer body for any memberwise initialization parameters corresponding to properties with lower visibility than the *calling* initializer.  This is because the *calling* initializer is not able to synthesize and forward memberwise initialization parameters for these properties as that would violate the first property eligibility rule.
+
+#### Algorithm
+
+1. Determine the set of properties elibile for memberwise initialization synthesis.  All properties, including inherited properties are considered.  Properties are eligible for memberwise initialization synthesis if:
+
+	1. Their access level is *at least* as visible as the memberwise initializer.
+	2. They do not have a behavior which prohibits memberwise initialization.
+	3. If the property is a `let` property it *may not* have an initial value.
+
+2. Determine the default value, if one exists, for each *memberwise initialization parameter*.  The default value for a memberwise parameter is the `@default` value for the its corresponding property if one exists or the initial value if one does not exist and the property is a `var`.
+	
+3. If the initializer declares any parameters with external labels matching the name of any of the properties eligible for memberwise initialization report a compiler error.  If the initializer needs to declare a parameter with an external label matching the name of a property the property **must** be explicitly excluded from memberwise initialization, possibly via the `@nomemberwise` attribute of the initializer if that enhancement to this proposal is adopted (lower visibility is another possibility).
+
+4. If the initialzer is a delegating, convenience, or subclass designated initializer and it needs to explicitly provide an argument for a memberwise parameter when it calls the chained initializer it must ensure that the corresponding property is excluded from its memberwise synthesis set, possibly via its `@nomemberwise` attribute if that enhancment to this proposal is adopted (lower visibility is another possibility).  If it *does* provide an explicit argument for a memberwise parameter included in its synthesis set report a compiler error.  
+
+5. Synthesize *memberwise initialization parameters* in the location where the `...` placeholder was specified.  The synthesized parameters should have external labels matching the property name.  Place the synthesized parameters in the following order:
+	1. All parameters **without** default values precede parameters **with** default values.
+	2. Within each group, superclass properties precede subclass properties.
+	3. Finally, follow property declaration order.
+	
+6. Synthesize initialization of all *direct memberwise initialization parameters* at the beginning of the initializer body.
+
+7. Synthesize arguments to the superclass initializer for *forwarded memberwise initialization parameters*.  The call to a chained initializer in the memberwise initializer body must be updated to forward any *forwarded memberwise initialization parameters* that were synthesized by the compiler.
+
+## Impact on existing code
+
+The changes described in this proposal are strictly additive and will have no impact on existing code.
+
+One possible breaking change which may be desirable to include alongside this proposed solution is to elimintate the existing memberwise initializer for structs and require developers to specifically opt-in to its synthesis by writing `memberwise init(...) {}`.  A mechanical transformation is possible to generate this declaration automatically if the existing memberwise initializer is removed.  If the existing memberwise initializer is not eliminated it **should not** be an error to declare it explicitly if desired. 
+
+## Future enhancements
+
+In the spirit of incremental change, the current proposal is focused on core functionality.  It is possible to enhance that core functionality with additional features.  These enhancements may be turned into proposals after the current proposal is accepted.
+
+### @nomemberwise
+
+There may be cases where the author of a type would like to prevent a specific property from participating in memberwise initialization either for all initializers or for a specific initializer.  The `@nomemberwise` attribute for properties and initializers supports this use case.
+
+Memberwise initializers can explicitly prevent memberwise initialization for specific properties by including them in a list of property names provided to the `@nomemberwise` attribute like this: `@nomemberwise(prop1, prop2)`.
+
+Properties will be able to opt-out of memberwise initialization with the `@nomemberwise` attribute.  When they do so they will not be eligible for memberwise initialization synthesis.  Because of this they must be initialized directly with an initial value or initialized directly by every initializer for the type.
+
+The `@nomemberwise` attribute would introduce two additional eligibility rules when deterimining which properties can participtate in memberwise initialization.
+
+1. The property **is not** annotated with the `@nomemberwise` attribute.
+2. The property **is not** included in the `@nomemberwise` attribute list attached of the initializer.  If `super` is included in the `@nomemberwise` attribute list **no** superclass properties will participate in memberwise initialization.
+
+This enhancement would also update the rule for subclass designated intializers allowing them to call non-memberwise intializers in the superclass:
+
+Memberwise designated initializers in subclasses **must** *either* call a memberwise initializer in the superclass *or* include `super` in its `@nomemberwise` attribute list as follows: `@nomemberwise(super)`.
+
+#### Examples
+
+NOTE: This example doesn't really save a lot.  Imagine ten properties with only one excluded from memberwise initialization.
+
+```swift
+struct S {
+	let s: String
+	let i: Int
+
+	// user declares:
+	@nomemberwise(i)
+	memberwise init(...) {
+		i = getTheValueForI()
+	}
+	// compiler synthesizes (suppressing memberwise initialization for properties mentioned in the @nomemberwise attribute):
+	init(s: String) {
+		/* synthesized */ self.s = s
+		
+		// body of the user's initializer remains
+		i = getTheValueForI()
+	}
+}
+```
 
 ```swift
 struct S {
@@ -244,140 +383,6 @@ struct S {
 	}
 }
 ```
-
-
-### delegating and convenience initializers
-
-NOTE: the call to the chained initializer **must** be unambiguous when only the explitly provided arguments are considered.  However it is allowed to be invalid on its own as long as it becomes valid after forwarding of memberwise arguments is completed (i.e. forwarding can be used to supply memberwise arguments where the parameter *does not* have a default value).
-
-```swift
-
-struct S {
-	let s: String = "hello"
-	let i: Int = 42
-
-	// user declares:
-	memberwise init(...) {}
-	// compiler synthesizes:
-	init(s: String = "hello", i: Int = 42) {
-		self.s = s
-		self.i = i
-	}
-	
-	// user declares:
-	@nomemberwise(s)
-	memberwise init(describable: CustomStringConvertible, ...) {
-		self.init(s: describable.description)
-	}
-	// compiler synthesizes (adding forwarded memberwise parameters):
-	init(describable: CustomStringConvertible, i: Int = 42) {
-		self.init(s: describable.description, i: i)
-	}
-}
-```
-
-### subclass initializers
-
-NOTE: the call to the chained initializer **must** be unambiguous when only the explitly provided arguments are considered.  However it is allowed to be invalid on its own as long as it becomes valid after forwarding of memberwise arguments is completed (i.e. forwarding can be used to supply memberwise arguments where the parameter *does not* have a default value).
-
-```swift
-class Base {
-	let baseProperty: String
-
-	// user declares:
-	memberwise init(...) {}
-	// compiler synthesizes:
-	init(baseProperty: String) {
-		self.baseProperty = baseProperty
-		super.init()
-	}
-}
-
-class Derived: Base {
-	let derivedProperty: Int
-
-	// user declares:
-	memberwise init(...) {}
-	// compiler synthesizes (adding forwarded memberwise parameters):
-	init(baseProperty: String, derivedProperty: Int) {
-		self.derivedProperry = derivedProperty
-		super.init(baseProperty: baseProperty)
-	}
-}
-
-```
-
-## Detailed design
-
-### Syntax changes
-
-This proposal introduces three new syntactic elements: the `memberwise` initializer declaration modifier, the `...` memberwise parameter placeholder, and the `@nomemberwise` attribute which can be applied to both properties and initializers.
-
-Initializers opt-in to synthesized memberwise initialization with the `memberwise` declaration modifier.  This modifier will cause the compiler to follow the procedure outlined later in the design to synthesize memberwise parameters as well as memberwise initialization code at the beginning of the initializer body.  Memberwise initializers can explicitly prevent memberwise initialization for specific properties by including them in a list of property names provided to the `@nomemberwise` attribute like this: `@nomemberwise(prop1, prop2)`.
-
-Properties will be able to opt-out of memberwise initialization with the `@nomemberwise` attribute.  When they do so they will not be eligible for memberwise initialization synthesis.  Because of this they must be initialized directly with an initial value or initialized directly by every initializer for the type.
-
-### Overview
-
-Throughout this design the term **memberwise initialization parameter** is used to refer to initializer parameters synthesized by the compiler as part of **memberwise initialization synthesis**.
-
-#### Terminology
-
-* **direct memberwise initialization parameters** are parameters which are synthesized by the compiler and initialized directly in the body of the initializer.
-
-* **forwarded memberwise initialization parameters** are parameters which are synthesized by the compiler and provided to another initializer that is called in the body of the initializer.
-
-* **synthesized memberwise initialization parameters** or simply *memberwise initialization parameters* is the full set of parameters synthesized by the compiler which includes both direct and forwarded memberwise initialization parameters.
-
-#### Memberwise initializer chaining
-
-Convenience initializers and delegating memberwise initializers **must** call an initializer that is also a memberwise initializer in order to allow the memberwise arguments to be forwarded.  
-
-Memberwise designated initializers in subclasses **must** *either* call a memberwise initializer in the superclass *or* include `super` in its `@nomemberwise` attribute list as follows: `@nomemberwise(super)`.
-
-When calling an initializer with lower visibility arguments **must** be provided directly in the initializer body for any memberwise initialization parameters corresponding to properties with lower visibility than the *calling* initializer.  This is because the *calling* initializer is not able to synthesize and forward memberwise initialization parameters for these properties as that would violate the first property eligibility rule.
-
-#### Algorithm
-
-1. Determine the set of properties elibile for memberwise initialization synthesis.  All properties, including inherited properties are considered.  Properties are eligible for memberwise initialization synthesis if:
-
-	1. Their access level is *at least* as visible as the memberwise initializer.
-	2. They do not have a behavior which prohibits memberwise initialization.
-	3. The property **is not** annotated with the `@nomemberwise` attribute.
-	4. The property **is not** included in the `@nomemberwise` attribute list attached of the initializer.  If `super` is included in the `@nomemberwise` attribute list all inherited properties are ineligible for memberwise initialization.
-	
-	The current initialization rules also require any `let` properties with an initial value to be excluded from memberwise initialization.  I believe it is extremely desirable to allow memberwise initialization for `let` properties while still supplying a default value in the property declaration.  If this is not allowed we have three choices, none of which are great: 
-	
-	1. Make the property a `var`.
-	2. Do not supply a default value and require callers to explicitly provide a value at every call site.
-	3. Manually declare a parameter with the default value in every initializer and manually initialize the property with the supplied argument.
-	
-	I would also like to point out that *instance* `let` properties with initial *values* really do not make sense at all if initializers are not able to specify a value other than the default.  The result is that **all** instances are required to have the same value which wastes space.
-	
-2. If the initializer declares any parameters with external labels matching the name of any of the properties eligible for memberwise initialization report a compiler error.  If the initializer needs to declare a parameter with an external label matching the name of a property the property **must** be explicitly excluded from memberwise initialization, possibly via the `@nomemberwise` attribute of the initializer (lower visibility is another possibility).
-
-3. If the initialzer is a delegating, convenience, or subclass designated initializer and it needs to explicitly provide an argument for a memberwise parameter when it calls the chained initializer it must ensure that the corresponding property is excluded from its memberwise synthesis set, possibly via its `@nomemberwise` attribute (lower visibility is another possibility).  If it *does* provide an explicit argument for a memberwise parameter included in its synthesis set report a compiler error.  
-
-4. Synthesize *memberwise initialization parameters* in the location where the `...` placeholder was specified.  The synthesized parameters should have external labels matching the property name.  Place the synthesized parameters in the following order:
-	1. All properties **without** default values precede properties **with** default values.
-	2. Within each group, superclass properties precede subclass properties.
-	3. Finally, follow declaration order
-	
-5. Synthesize initialization of all *direct memberwise initialization parameters* at the beginning of the initializer body.
-
-6. Synthesize arguments to the superclass initializer for *forwarded memberwise initialization parameters*.  The call to a chained initializer in the memberwise initializer body must be updated to forward any *forwarded memberwise initialization parameters* that were synthesized by the compiler.
-
-7. If the initialization rules are modified to allow initializers to initialize a property (especially a `let` property) with a value *other than* its initial value, synthesis of initialization with the default / initial value would happen *after* the preceding steps have been completed.  This would allow memberwise initialization to take control of initialization of such properties where appropriate, while still allowing default / initial values initialization to be synthesized for members which do not participate in memberwise initialization and which have not been explicityl intialized in the body of the initializer.  
-
-	One possible implementation would be to attempt compilation and if a 'Return from initializer without initializing all stored properties' error is generated, attempt recovery by synthesizing initialization of the property if an initial value was provided in the declaration.  This is probably not the best implementation, but I mention it as it demonstrates that the compiler is already able to detect *when* it would be necessary.
-
-## Impact on existing code
-
-The changes described in this proposal are strictly additive and will have no impact on existing code.
-
-One possible breaking change which may be desirable to include alongside this proposed solution is to elimintate the existing memberwise initializer for structs and require developers to specifically opt-in to its synthesis by writing `memberwise init(...) {}`.  A mechanical transformation is possible to generate this declaration automatically if the existing memberwise initializer is removed.
-
-## Future enhancements
 
 ### Objective-C Class Import
 
