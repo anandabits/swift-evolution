@@ -72,7 +72,7 @@ struct S {
 	let i: Int
 
 	// user declares:
-	memberwise init(..) {}
+	memberwise init(...) {}
 	// compiler synthesizes:
 	init(s: String, i: Int) {
 		/* synthesized */ self.s = s
