@@ -3,7 +3,7 @@
 * Proposal: [SE-NNNN](https://github.com/apple/swift-evolution/blob/master/proposals/NNNN-flexible-memberwise-initializers.md)
 * Author(s): [Matthew Johnson](https://github.com/anandabits)
 * Status: **Review**
-* Review manager: TBD
+* Review manager: Chris Lattner
 
 ## Introduction
 
