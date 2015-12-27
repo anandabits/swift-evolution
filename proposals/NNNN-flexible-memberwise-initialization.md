@@ -7,13 +7,13 @@
 
 ## Introduction
 
-The Swift compiler is currently able to generate a memberwise initializer for use in some circumstances however there are currently many limitations to this.  This proposal build on the idea of compiler generated memberwise initialization making it available to any initializer that opts in.
+The Swift compiler is currently able to generate a memberwise initializer for use in some circumstances, however there are currently many limitations to this.  This proposal builds on the idea of compiler generated memberwise initializer, making the capability available to any initializer that opts in.
 
 Swift-evolution thread: [Proposal Draft: flexible memberwise initialization](https://lists.swift.org/pipermail/swift-evolution/Week-of-Mon-20151221/003902.html)
 
 ## Motivation
 
-When designing initializers for a type we are currently faced with the unfortunate fact that the more flexibility we wish to offer users the more boilerplate we are required to write and maintain.  We usually end up with more boilerplate and less flexibility than desired.  There have been various strategies employed to mitigate this problem including:
+When designing initializers for a type we are currently faced with the unfortunate fact that the more flexibility we wish to offer users the more boilerplate we are required to write and maintain.  We usually end up with more boilerplate and less flexibility than desired.  There have been various strategies employed to mitigate this problem, including:
 
 1. Sometimes properties that should be immutable are made mutable and a potentially unsafe ad-hoc two-phase initialization pattern is employed where an instance is initialized and then configured immediately afterwards.  This allows the developer to avoid including boilerplate in every initializer that would otherwise be required to initialize immutable properties.
 
@@ -45,16 +45,15 @@ I propose adding a `memberwise` declaration modifier for initializers which allo
 The set of properties that receive memberwise initialization parameters is determined by considering *only* the initializer declaration and the declarations for all properties that are *at least* as visible as the initializer (including any behaviors attached to the properties).  The rules are as follows:
 
 1. Their access level is *at least* as visible as the memberwise initializer.
-2. They do not have a behavior which prohibits memberwise initialization.
+2. They do not have a behavior which prohibits memberwise initialization (e.g. the 'lazy' behavior).
 3. If the property is a `let` property it *may not* have an initial value.
 
-Two additional eligibiliy rules may be added by the `@nomemberwise` enhancement in the future.
+Two additional eligibility rules may be added by the `@nomemberwise` enhancement in the future.
 
-The parameters are synthesized in the parameter list in the location of the `...` placeholder.  They are ordered as follows:
+The parameters are synthesized in the parameter list in the location of the `...` placeholder.  It is a compile-time error for a memberwise initializer to omit the `...` placeholder.  The parameter list is ordered as follows:
 
 1. All parameters **without** default values precede parameters **with** default values.
-2. Within each group, superclass properties precede subclass properties.
-3. Finally, follow property declaration order.
+2. Within each group, parameters follow property declaration order.
 
 Under the current proposal only `var` properties could specify a default value, which would be the initial value for that property.   It may be possible for `let` properties to specify a default value in the future using the `@default` enhancement or some other mechanism allowing the default value to be specified.
 
@@ -83,7 +82,7 @@ struct S {
 
 ### Var properties with initial values
 
-NOTE: this example is only possible for `var` properties due to the initialization rules for `let` properties.
+NOTE: this example is only possible for `var` properties due to the initialization rules for `let` properties.  If the initializer expression contains side effects, then the side effect is not evaluated if passed in explicitly by a caller of the memberwise initializer.
 
 ```swift
 struct S {
@@ -150,7 +149,7 @@ struct S {
 		
 		// compiler does not synthesize initialization for i 
 		// because it contains a behavior that is incompatible with 
-		// memberwise initialization
+		// memberwise initialization.
 	}
 }
 ```
@@ -159,9 +158,9 @@ struct S {
 
 ### Syntax changes
 
-This proposal introduces three new syntactic elements: the `memberwise` initializer declaration modifier and the `...` memberwise parameter placeholder.
+This proposal introduces two new syntactic elements: the `memberwise` declaration modifier and the `...` memberwise parameter placeholder.
 
-Initializers opt-in to synthesized memberwise initialization with the `memberwise` declaration modifier.  This modifier will cause the compiler to follow the procedure outlined later in the design to synthesize memberwise parameters as well as memberwise initialization code at the beginning of the initializer body.  
+Designated initializers opt-in to synthesized memberwise initialization with the `memberwise` declaration modifier.  This modifier will cause the compiler to follow the procedure outlined later in the design to synthesize memberwise parameters as well as memberwise initialization code at the beginning of the initializer body.  
 
 ### Overview
 
@@ -178,15 +177,15 @@ Throughout this design the term **memberwise initialization parameter** is used 
 
 #### Algorithm
 
-1. Determine the set of properties elibile for memberwise initialization synthesis.  Properties are eligible for memberwise initialization synthesis if:
+1. Determine the set of properties eligible for memberwise initialization synthesis.  Properties are eligible for memberwise initialization synthesis if:
 
 	1. Their access level is *at least* as visible as the memberwise initializer.
 	2. They do not have a behavior which prohibits memberwise initialization.
 	3. If the property is a `let` property it *may not* have an initial value.
 
-2. Determine the default value, if one exists, for each *memberwise initialization parameter*.  Under the current proposal only `var` properties could specify a default value, which would be the initial value for that property.   It may be possible for `let` properties to specify a default value in the future using the `@default` enhancement or some other mechanism allowing the default value to be specified.
+2. Determine the default value, if one exists, for each *memberwise initialization parameter*.  Under the current proposal only `var` properties could specify a default value, which would be the initial value for that property.   
 	
-3. If the initializer declares any parameters with external labels matching the name of any of the properties eligible for memberwise initialization report a compiler error.  If the initializer needs to declare a parameter with an external label matching the name of a property the property **must** be explicitly excluded from memberwise initialization, possibly via the `@nomemberwise` attribute of the initializer if that enhancement to this proposal is adopted (lower visibility is another possibility).
+3. If the initializer declares any parameters with external labels matching the name of any of the properties eligible for memberwise initialization report a compiler error.
 
 4. Synthesize *memberwise initialization parameters* in the location where the `...` placeholder was specified.  The synthesized parameters should have external labels matching the property name.  Place the synthesized parameters in the following order:
 	1. All parameters **without** default values precede parameters **with** default values.
@@ -200,7 +199,7 @@ This proposal will also support generating an *implicit* memberwise initializer 
 
 1. All members have at least `internal` visibility.
 2. The type declares no initializers explicitly.
-3. The type:
+3. The type is:
 	1. a struct
 	2. a root class
 	3. a class whose superclass has a designated intializer requiring no arguments
@@ -210,9 +209,9 @@ The *implicitly* synthesized initializer will be identical to an initializer dec
 1. For structs and root classes: `memberwise init(...) {}`
 2. For derived classes: `memberwise init(...) { super.init() }`
 
-NOTE: If the *implict* initializer is synthesized and the previous declartion is placed in an extension of the type a compiler error will result.
+NOTE: Because the `memberwise` declaration modifier only applies to designated initializers, they may not be used with initializers defined in an extension.
 
-The changes described in this proposal are *alomost* entirely additive.  The only impact on existing code will be in the case of structs with `private` stored properties which had been receiving an implicitly synthesized memberwise initializer.  In this case a mechanical migration could generate the explicit code necessary to declare the previously implicit initializer.
+The changes described in this proposal are *almost* entirely additive.  The only impact on existing code will be in the case of structs with `private` stored properties which had been receiving an implicitly synthesized memberwise initializer.  In this case a mechanical migration could generate the explicit code necessary to declare the previously implicit initializer.
 
 ## Future enhancements
 
