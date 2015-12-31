@@ -17,7 +17,330 @@ Swift-evolution thread: [Proposal Draft: automatic protocol forwarding](https://
 
 Delegation is a robust, composition oriented design technique that keeps interface and implementation inheritance separate.  The primary drawback to this technique is that it requires a lot of manual boilerplate to forward implemenation to the implementing member.  This proposal eliminates the need to write such boilerplate manually, thus making delegation-based designs much more convenient and attractive.
 
-This proposal may also serve as the foundation for a future enhancement allowing a very concise "newtype" declaration.
+This proposal may also serve as the foundation for a future enhancement allowing a very concise "newtype" declaration.  In the meantime, it facilitates similar functionality, although in a slightly more verbose manner.
+
+### Examples
+
+Several examples follow.  
+
+The first two show how this proposal could improve how forwarding is implemented by the lazy collection subsystem of the standard library.  This makes an interesting case study as each example employs a different forwarding mechanism.
+
+#### `LazySequence`
+
+The relevant portion of the current implementation of `LazySequence` looks like this (with comments removed and formatting tweaks):
+
+```swift
+// in SequenceWrapper.swift:
+
+public protocol _SequenceWrapperType {
+  typealias Base : SequenceType
+  typealias Generator : GeneratorType = Base.Generator
+  
+  var _base: Base {get}
+}
+
+extension SequenceType
+  where Self : _SequenceWrapperType, Self.Generator == Self.Base.Generator {
+
+  public func generate() -> Base.Generator {
+    return self._base.generate()
+  }
+
+  public func underestimateCount() -> Int {
+    return _base.underestimateCount()
+  }
+
+  @warn_unused_result
+  public func map<T>(
+    @noescape transform: (Base.Generator.Element) throws -> T
+  ) rethrows -> [T] {
+    return try _base.map(transform)
+  }
+
+  @warn_unused_result
+  public func filter(
+    @noescape includeElement: (Base.Generator.Element) throws -> Bool
+  ) rethrows -> [Base.Generator.Element] {
+    return try _base.filter(includeElement)
+  }
+  
+  public func _customContainsEquatableElement(
+    element: Base.Generator.Element
+  ) -> Bool? { 
+    return _base._customContainsEquatableElement(element)
+  }
+  
+  public func _preprocessingPass<R>(@noescape preprocess: (Self) -> R) -> R? {
+    return _base._preprocessingPass { _ in preprocess(self) }
+  }
+
+  public func _copyToNativeArrayBuffer()
+    -> _ContiguousArrayBuffer<Base.Generator.Element> {
+    return _base._copyToNativeArrayBuffer()
+  }
+
+  public func _initializeTo(ptr: UnsafeMutablePointer<Base.Generator.Element>)
+    -> UnsafeMutablePointer<Base.Generator.Element> {
+    return _base._initializeTo(ptr)
+  }
+}
+
+// in LazySequence.swift:
+
+public struct LazySequence<Base : SequenceType>
+  : LazySequenceType, _SequenceWrapperType {
+
+  public init(_ base: Base) {
+    self._base = base
+  }
+  
+  public var _base: Base
+  public var elements: Base { return _base }
+}
+
+```
+
+`LazySequence` is using the approach to forwarding mentioned by Kevin Ballard [on the mailing list](https://lists.swift.org/pipermail/swift-evolution/Week-of-Mon-20151228/004755.html) in response to this proposal.  This approach has several deficiencies that directly impact `LazySequence`:
+
+1. `LazySequence` must publicly expose implementation details.  Both its `_base` property as well as its conformance to `_SequenceWrapperType`.
+
+2. The forwarding members must be manually implemented.  They are trivial, but mistakes are still possible.  In this case, `@warn_unused_result` is missing in some places where it should probably be specified (and would be synthesized using the approach in this proposal due to its presence in the protocol member declarations).
+
+3. It is not immediately apparent that `_SequenceWrapperType` and the corresponding extension **only** provide forwarding members.  Even if the name clearly indicates that it is possible that the code does something different.  It is possible for somebody to come along after the initial implementation and add a new method that does something other than simple forwarding.
+
+4. Because the forwarding is implemented via a protocol extension as default methods it can be overriden by an extension on `LazySequence`.
+
+Here is an alternative implemented using the current proposal:
+
+```swift
+
+// _LazySequenceForwarding redeclares the subset of the members of SequenceType we wish to forward.
+// The protocol is an implementation detail and is marked private.
+private protocol _LazySequenceForwarding {
+
+  typealias Generator : GeneratorType
+
+  @warn_unused_result
+  func generate() -> Generator
+
+  @warn_unused_result
+  func underestimateCount() -> Int
+
+  @warn_unused_result
+  func map<T>(
+    @noescape transform: (Generator.Element) throws -> T
+  ) rethrows -> [T]
+  
+  @warn_unused_result
+  func filter(
+    @noescape includeElement: (Generator.Element) throws -> Bool
+  ) rethrows -> [Generator.Element]
+  
+  @warn_unused_result
+  func _customContainsEquatableElement(
+    element: Generator.Element
+  ) -> Bool?
+
+  func _copyToNativeArrayBuffer() -> _ContiguousArrayBuffer<Generator.Element>
+
+  func _initializeTo(ptr: UnsafeMutablePointer<Generator.Element>)
+    -> UnsafeMutablePointer<Generator.Element>
+}
+
+public struct LazySequence<Base : SequenceType> : LazySequenceType {
+
+  public init(_ base: Base) {
+    self._base = base
+  }
+  
+  // NOTE: _base is now internal
+  internal var _base: Base
+  public var elements: Base { return _base }
+  
+  public forward _LazySequenceForwarding to _base
+  
+  // The current proposal does not currently support forwarding 
+  // of members with nontrivial Self requirements.
+  // Because of this _preprocessingPass is forwarded manually.
+  // A future enhancement may be able to support automatic
+  // forwarding of protocols with some or all kinds of 
+  // nontrivial Self requirements.
+  public func _preprocessingPass<R>(@noescape preprocess: (Self) -> R) -> R? {
+    return _base._preprocessingPass { _ in preprocess(self) }
+  }
+}
+```
+
+This example takes advantage of a very important aspect of the design of this proposal.  Neither `Base` nor `LazySequence` are required to conform to `_LazySequenceForwarding`.  The only requirement is that `Base` contains the members specified in `_LazySequenceForwarding` as they will be used in the synthesized forwarding implementations. 
+
+The relaxed requirement is crucial to the application of the protocol forwarding feature in this implementation.  We **cannot** conform `Base` to `_LazySequenceForwarding`.  If it were possible to conform one protocol to another we could conform `SequenceType` to `_LazySequenceForwarding`, however it is doubtful that we would want that conformance.  Despite this, it is clear to the compiler that `Base` does contain the necessary members for forwarding as it conforms to `LazySequence` which also declares all of the necessary members.  
+
+This implementation is more robust and more clear:
+
+1. We no longer leak any implementation details.
+
+2. There is no chance of making a mistake in the implementation of the forwarded members.  It is possible that a mistake could be made in the member declarations in `_LazySequenceForwarding`.  However, if a mistake is made there a compiler error will result.
+
+3. The set of forwarded methods is immediately clear, with the exception of `_preprocessingPass` because of its nontrivial `Self` requirement.  Removing the limitation on nontrivial `Self` requirements is a highly desired improvement to this proposal or future enhancement to this feature.
+
+4. The forwarded members cannot be overriden in an extension on `LazySequence`.  If somebody attempts to do so it will result in an ambiguous use error at call sites.
+
+#### `LazyCollection`
+
+The relevant portion of the current implementation of `LazyCollection` looks like this (with comments removed and formatting tweaks):
+
+```swift
+// in LazyCollection.swift:
+
+public struct LazyCollection<Base : CollectionType>
+  : LazyCollectionType {
+
+  public typealias Elements = Base
+  public var elements: Elements { return _base }
+
+  public typealias Index = Base.Index
+
+  public init(_ base: Base) {
+    self._base = base
+  }
+
+  internal var _base: Base
+}
+
+extension LazyCollection : SequenceType {
+
+  public func generate() -> Base.Generator { return _base.generate() }
+  
+  public func underestimateCount() -> Int { return _base.underestimateCount() }
+
+  public func _copyToNativeArrayBuffer() 
+     -> _ContiguousArrayBuffer<Base.Generator.Element> {
+    return _base._copyToNativeArrayBuffer()
+  }
+  
+  public func _initializeTo(
+    ptr: UnsafeMutablePointer<Base.Generator.Element>
+  ) -> UnsafeMutablePointer<Base.Generator.Element> {
+    return _base._initializeTo(ptr)
+  }
+
+  public func _customContainsEquatableElement(
+    element: Base.Generator.Element
+  ) -> Bool? { 
+    return _base._customContainsEquatableElement(element)
+  }
+}
+
+extension LazyCollection : CollectionType {
+	
+  public var startIndex: Base.Index {
+    return _base.startIndex
+  }
+  
+  public var endIndex: Base.Index {
+    return _base.endIndex
+  }
+
+  public subscript(position: Base.Index) -> Base.Generator.Element {
+    return _base[position]
+  }
+
+  public subscript(bounds: Range<Index>) -> LazyCollection<Slice<Base>> {
+    return Slice(base: _base, bounds: bounds).lazy
+  }
+  
+  public var isEmpty: Bool {
+    return _base.isEmpty
+  }
+
+  public var count: Index.Distance {
+    return _base.count
+  }
+
+  public func _customIndexOfEquatableElement(
+    element: Base.Generator.Element
+  ) -> Index?? {
+    return _base._customIndexOfEquatableElement(element)
+  }
+
+  public var first: Base.Generator.Element? {
+    return _base.first
+  }
+}
+```
+
+`LazyCollection` is using direct manual implementations of forwarding methods.  It corresponds exactly to implementations that would be synthesized by the compiler under this proposal.  This approach avoids some of the problems with the first approach:
+
+1. It does not leak implementation details.  This is good!
+
+2. The forwarded members cannot be overriden.
+
+Unfortunately it still has some drawbacks:
+
+1. It is still possible to make mistakes in the manual forwarding implementations.
+
+2. The set of forwarded methods is even less clear than under the first approach as they are now potentially interspersed with custom, nontrivial member implementations, such as `subscript(bounds: Range<Index>) -> LazyCollection<Slice<Base>>` in this example.
+
+3. This approach requires reimplementing the forwarded members in every type which forwards them and is therefore less scalable than the first approach and this proposal.  This may not matter for `LazyCollection` but it may well matter in other cases.
+
+One intersting difference to note between `LazySequence` and `LazyCollection` is that `LazySequence` forwards three members which `LazyCollection` does not: `map`, `filter`, and `_preprocessingPass`.  It is unclear whether this difference is intentional or not.  
+
+This difference is particularly interesting in the case of `_preprocessingPass`.  `LazyCollection` appears to be using the default implementation for `CollectionType` in Collection.swift, which results in `_base._preprocessingPass` not getting called.  It is not apparent why this behavior would be correct for `LazyCollection` and not for `LazySequence`.
+
+I wonder if the difference in forwarded members is partly due to the fact that the set of forwarded members is not as clear as it could be.  
+
+Here is an alternate approach implemented using the current proposal.  It assumes that the same `SequenceType` members that are forwarded by `LazySequence` should also be forwarded by `LazyCollection`, allowing us to reuse the `_LazySequenceForwarding` protocol declared in the first example.
+
+```swift
+
+// _LazyCollectionForwarding redeclares the subset of the members of Indexable and CollectionType we wish to forward.
+// The protocol is an implementation detail and is marked private.
+private protocol _LazyCollectionForwarding: _LazySequenceForwarding {
+  typealias Index : ForwardIndexType
+  var startIndex: Index {get}
+  var endIndex: Index {get}
+
+  typealias _Element
+  subscript(position: Index) -> _Element {get}
+
+  var isEmpty: Bool { get }
+  var count: Index.Distance { get }
+  var first: Generator.Element? { get }
+
+  @warn_unused_result
+  func _customIndexOfEquatableElement(element: Generator.Element) -> Index??
+}
+
+public struct LazyCollection<Base : CollectionType>
+  : LazyCollectionType {
+
+  public typealias Elements = Base
+  public var elements: Elements { return _base }
+
+  public init(_ base: Base) {
+    self._base = base
+  }
+
+  internal var _base: Base
+  
+  public forward _LazyCollectionForwarding to _base
+
+  // It may be the case that LazyCollection should forward _preprocessingPass 
+  // in the same fashion that LazySequence uses, which cannot yet be automated
+  // under the current proposal.
+}
+
+extension LazyCollection : CollectionType {
+  // This implementation is nontrivial and thus not forwarded
+  public subscript(bounds: Range<Index>) -> LazyCollection<Slice<Base>> {
+    return Slice(base: _base, bounds: bounds).lazy
+  }
+}
+```
+
+This approach to forwarding does not exhibit any of the issues with the manual approach and only takes about half as much code now that we are able to reuse the previous declaration of `_LazySequenceForwarding`.
+
+NOTE: `LazyMapCollection` in Map.swift uses the same manual forwarding approach as `LazyCollection` to forward a handful of members and would therefore also be a candidate for adopting the new forwarding mechanism as well.
 
 ## Proposed solution
 
