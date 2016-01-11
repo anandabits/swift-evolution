@@ -1,289 +1,288 @@
-# Partial Initializers
+# Property Lists
 
-* Proposal: [SE-NNNN](https://github.com/apple/swift-evolution/blob/master/proposals/NNNN-partial-initializers.md)
+* Proposal: [SE-NNNN](https://github.com/apple/swift-evolution/blob/master/proposals/NNNN-property-lists.md)
 * Author(s): [Matthew Johnson](https://github.com/anandabits)
 * Status: **Awaiting review**
 * Review manager: TBD
 
 ## Introduction
 
-This proposal introduces partial initializers.  They perform part, but not all, of phase 1 initialization for a type.  Partial initializers can only be called by designated initializers of the same type or other partial initializers of the same type.
+This proposal introduces the `propertylist` declaration.  Property lists provide concise syntactic sugar for declaring memberwise partial initializers and memberwise computed tuple properties.
 
-Swift-evolution thread: [Proposal Draft: Partial Initializers](https://lists.swift.org/pipermail/swift-evolution)
+NOTE: I do not love the name "property lists" for the feature or the keyword but haven't thought of anything better.  Suggestions are welcome.
+
+Swift-evolution thread: [Proposal Draft: Property Lists](https://lists.swift.org/pipermail/swift-evolution)
 
 ## Motivation
 
-Partial initializers will make it much easier to factor out common initialization logic than it is today.
+I believe the review of the [Flexible Memberwise Initialization](https://github.com/apple/swift-evolution/blob/master/proposals/0018-flexible-memberwise-initialization.md) proposal demonstrated a strong demand for concise yet flexible memberwise initialization.  The discussion highlighted several areas where that proposal fell short:
 
-### Memberwise initialization
+1. Clarity regarding which parameters receive memberwise initialization.
+2. Control over which parameters receive memberwise initialization.
+3. Control over specific memberwise parameter ordering.
+4. Control over parameter labels.
+5. Control over default parameter values, especially for `let` properties.
+6. It is a very narrow, special case feature.
 
-Partial initializers are a general feature that can work together with [Parameter Forwarding](https://github.com/anandabits/swift-evolution/edit/parameter-forwarding/proposals/NNNN-parameter-forwarding.md) and [Property Lists](LINK) to enable extremely flexible memberwise initialization.  
+This proposal builds on the [Partial Initializer](https://github.com/anandabits/swift-evolution/blob/partial-initializers/proposals/NNNN-partial-initializers.md) proposal to solve these problems using a more general underlying mechanism.  It enables truly flexible memberwise initialization. 
 
-The combination of partial initializers and parameter forwarding is sufficiently powerfule to replace the explicit memberwise initializers of the [Flexible Memberwise Initialization](https://github.com/apple/swift-evolution/blob/master/proposals/0018-flexible-memberwise-initialization.md) proposal by simply adding a three implicit partial initializers.
-
-### Extensions with stored properties
-
-Partial initialization is an enabling feature for stored properties in class extensions.  Extension with stored properties would be required to have a designated initializer.  That extension initializer would effectively be treated as a partial initializer by designated initializers of the class.  
-
-John McCall [briefly described](https://lists.swift.org/pipermail/swift-evolution/Week-of-Mon-20151221/004479.html) how this might work in the mailing list thread discussing extensions with stored properties. 
+Property lists also support other memberwise features, beginning with memberwise computed tuple properties.
 
 ## Proposed solution
 
-The proposed solution is to introduce a `partial` declaration modifier for initializers.  
-
-1. When this declaration modifier is present the entire body of the initializer must comply with phase 1 initialization.  It is possible for a partial initializer to initialize all stored properties but it is not possible for a partial initializer to call a `super` initializer.
-
-2. Partial initializers can only be called during phase 1 of initialization by another partial initalizer of the same type, by a designated initializer of the same type, or by another struct initializer of the same type.
-
-3. The compiler keeps track of the properties initialized by a call to a partial initializer and uses that knowledge when enforcing initialization rules in phase 1 in the calling initializer.
-
-4. Partial initializers receive an identifier, which avoids the need to rely on overloading to differentiate between partial initializers.
-
-5. Struct partial initializers are allowed to include an access control modifier specifying their visibility.  They can be called in any initializer of the same type where they are visible.
-
-6. Class partial initializers are always private.  This is because they can only be declared in the main body of a class and can only be called by a designated initializer of the same type.
-
-7. There is no restriction on the order in which the partial initializers are called aside from the rule that the can only be called during phase 1 of initialization and the rule that a `let` property must be initialized once and only once during phase 1.
-
-### Basic example
+There are two ways to specify a property list.  The basic mechanism is a property list declaration that looks as follows: 
 
 ```swift
-struct S {
-  let a, b, c, d: Int
-  partial init bAndC(i: Int = 10) {
-    b = 10
-    c = 20
+  propertylist configProperties: aPropName, customLabel anotherPropName = 42
+```
+
+All properties mentioned in the property list declaration must be visible at the site of the declaration.
+
+A `propertylist` attribute also exists for property declarations to support cases where a list of property declarations should also be treated as a property list:
+
+```swift
+  @propertylist(aPropertyListIdentifier) let prop1, prop2: Int
+```
+
+A property list can contain any kind of property, including those with behaviors.  However, when certain kinds of properties are included it will not be possible to synthesize a partial memberwise initializer and / or a setter for the computed tuple property.
+
+### Synthesized elements
+
+A typealias will always be synthesized:
+
+1. It will have a name matching the identifier of the property list, with the first character transformed to upper case.
+2. It will be a tuple type containing labels and types matching those specified in the property list.
+
+A computed tuple property will always be synthesized:
+
+1. It will always include a getter. 
+2. Visibility of the getter will match the visibility of the least visible getter.
+3. It will contain a setter as long as all of the properties are settable.
+4. Visibility of the setter will match the visibility of the least visible setter.
+
+A paritial initializer will only be generated if:
+
+1. All properties are stored properties.
+2. None are `let` properties with an initial value.
+3. None have a behavior which is incompatible with phase 1 initialization.
+4. Visibility of the partial initializer will match the least visible setter for structs.  Partial initializers for classes are always private (as specified by the partial initializer proposal).
+5. The property list is declared in the main body of the type, not an extension, **unless** the type is a struct.
+6. If stored properties are allowed in extensions and / or protocols in the future, all properties included in the list must be declared within the same body as the property list for a partial initializer to be synthesized (either the main body of the type or the body of the same extension or same protocol).
+
+The structure of the synthesized elements is as follows:
+
+1. Ordering of partial initializer parameters and tuple members will match the order of the property list declaration.
+2. The external parameter labels and tuple labels will match the label specified in the property list if it exists and the property name otherwise.
+3. The default value for partial initializer parameters will be the default value specified in the property list if it exists and the initial value of the property otherwise (if that exists).  If neither exist the parameter will not have a default value.
+
+Visibility of a synthesized members is capped at `internal` unless `public` is explicitly specified.  If `public` (or `internal`) is explicitly specified, all properties referenced must have getter and setter visibility of **at least** the specified access level or a compiler error will result.
+
+### Examples
+
+#### Basic example
+
+```swift
+public struct S {
+  let i: Int = 42
+  public var s: String = "hello"
+  public var d: Double
+  
+  // user declares:
+  public propertylist custom: dLabel d = 42, s
+  
+  // compiler synthesizes:
+  public typealias Custom = (dLabel: Double, s: String)
+  public var custom: Custom {
+    get { return (dLabel: d, s: s) }
+    set { (d, s) = newValue }
   }
-  init(i: Int) {
-    a = i * 2
-    d = i * 4
-    bAndC.init()
+  public partial init custom(dlabel d: Double = 42, s: String = "hello") {
+    self.d = d
+    self.s = s
   }
 }
 ```
 
-### Calling multiple partial initializers 
+#### Including a let with a initial value
 
 ```swift
 struct S {
-  let a, b, c, d: Int
-  partial init bAndC() {
-    b = 10
-    c = 20
+  let i: Int = 42
+  let s: String = "hello"
+  var d: Double
+  
+  // user declares:
+  propertylist custom: dLabel d, s
+  
+  // compiler synthesizes:
+  typealias Custom = (dLabel: Double, s: String)
+  var custom: Custom {
+    get { return (dLabel: d, s: s) }
   }
-  partial init configureD(i: Int) {
-    d = i * 4
+  // NOTE: no setter because a `let` was included
+  // and no partial initializer because the `let` 
+  // has an initial value.
+}
+```
+
+#### Including a lazy property
+
+```swift
+struct S {
+  let i: Int
+  var s: String
+  lazy var d: Double
+  
+  // user declares:
+  propertylist custom: dLabel d, s
+  
+  // compiler synthesizes:
+  typealias Custom = (dLabel: Double, s: String)
+  var custom: Custom {
+    get { return (dLabel: d, s: s) }
+    set { (d, s) = newValue }
   }
-  init(i: Int) {
-    configureD.init(i)
-    a = i * 2
-    bAndC.init()
+  // NOTE: no partial initializer because a `lazy var` was included.
+}
+```
+
+#### Including a `var` with a private setter
+
+
+```swift
+struct S {
+  let i: Int
+  var s: String
+  private(set) var d: Double = 42
+  
+  // user declares:
+  propertylist custom: dLabel d, s = "hello"
+  
+  // compiler synthesizes:
+  typealias Custom = (dLabel: Double, s: String)
+  private(set) var custom: Custom {
+    get { return (dLabel: d, s: s) }
+    set { (d, s) = newValue }
+  }
+  // NOTE: The initial value for `d` is used as a default 
+  // parameter value because a different default parameter value 
+  // was not specified.
+  private partial init custom(dlabel d: Double = 42, s: String = "hello") {
+    self.d = d
+    self.s = s
   }
 }
 ```
 
-### One partial init calling another
+#### Including a computed property
 
 ```swift
 struct S {
-  let a, b, c, d: Int
-  partial init bAndC() {
-    b = 10
-    c = 20
+  let i: Int
+  var s: String
+  var d: Double {
+    get { return getValueFromSomewhere() }
+    set { storeValueSomewhere(newValue) }
   }
-  partial init bcAndD(i: Int) {
-    d = i * 4
-    bAndC.init()
+  
+  // user declares:
+  propertylist custom: dLabel d, s
+  
+  // compiler synthesizes:
+  typealias Custom = (dLabel: Double, s: String)
+  var custom: Custom {
+    get { return (dLabel: d, s: s) }
+    set { (d, s) = newValue }
   }
-  init(i: Int) {
-    a = i * 2
-    bcAndD.init(i)
+  // NOTE: no partial initializer because a computed property was included.
+}
+```
+
+#### Using the `@propertylist` attribute
+
+```swift
+struct S {
+  @propertylist(custom) var s: String, d: Double = 42
+  private let i: Int
+  
+  // compiler synthesizes:
+  typealias Custom = (s: String, d: Double)
+  var custom: Custom {
+    get { return (s: s, d: d) }
+    set { (s, d) = newValue }
+  }
+  partial init custom(s: String, d: Double = 42) {
+    self.s = s
+    self.d = d
   }
 }
 ```
 
-### Syntactic sugar for forwarding
-
-It will be a common use case to factor out some common initialization logic using a partial initializer.  Often the parameters for the partial initializer will simply be forwarded.  
-
-Syntactic sugar is provided to streamline this use case.  It matches the placeholder syntax of the [parameter forwarding proposal](https://github.com/anandabits/swift-evolution/blob/parameter-forwarding/proposals/NNNN-parameter-forwarding.md), with the placeholder identifier matching the name of a partial initializer.  The implementation of forwarding matches the implementation of the parameter forwarding proposal.
-
-#### Basic forwarding sugar example
+#### Using a property list declaration for memberwise intialization
 
 ```swift
 struct S {
-  let a, b, c, d: Int
-  partial init bAndC(b: Int = 10, cLabel c: Int = 20) {
-    b = b
-    c = c
-  }
-  
-  // user writes
-  init(i: Int, ...bAndC) {
-    a = i * 2
-    d = i * 4
-  }
-  
-  // compiler synthesizes
-  init(i: Int, b: Int = 10, cLabel: Int = 20) {
-    bAndC.init(b: b, cLabel: cLabel)
-    a = i * 2
-    d = i * 4
-  }
-  
-  // equivalent to writing the following under the parameter forwarding proposal:
-  // NOTE: the placeholder identifier is changed to `bAndCParams` here to avoid
-  // conflict with the name of the partial initializer itself
-  init(i: Int, ...bAndCParams) {
-    bAndC.init(...bAndCParams)
-    a = i * 2
-    d = i * 4
-  }
-}
-```
-
-#### Forwarding to more than one partial initializer
-
-```swift
-struct S {
-  let a, b, c, d: Int
-  partial init bAndC(b: Int = 10, cLabel c: Int = 20) {
-    b = b
-    c = c
-  }
-  partial init aAndD(i: Int) {
-    a = i * 10
-    d = i * 100
-  }
-  
-  // user writes
-  init(...aAndD, ...bAndC) {}
-  
-  // compiler synthesizes
-  init(i: Int, b: Int = 10, cLabel: Int = 20) {
-    aAndD.init(i: Int)
-    bAndC.init(b: b, cLabel: cLabel)
-  }
-  
-  // equivalent to writing the following under the parameter forwarding proposal:
-  // NOTE: the placeholder identifier is changed to `bAndCParams` here to avoid
-  // conflict with the name of the partial initializer itself
-  init(...aAndDParams, ...bAndCParams) {
-    aAndD.init(...aAndDParams)
-    bAndC.init(...bAndCParams)
-  }
-}
-```
-
-#### One partial initizer forwarding to another
-
-```swift
-struct S {
-  let a, b, c, d: Int
-  partial init bAndC(b: Int = 10, cLabel c: Int = 20) {
-    b = b
-    c = c
-  }
-  
-  // user writes
-  partial init abAndC(...bAndC) {
-    a = 42
-  }
-  
-  // compiler synthesizes
-  partial init abAndC(b: Int = 10, cLabel c: Int = 20) {
-    bAndC.init(b: b, c: c)
-    a = 42
-  }
-  
-  // equivalent to writing the following under the parameter forwarding proposal:
-  // NOTE: the placeholder identifier is changed to `bAndCParams` here to avoid
-  // conflict with the name of the partial initializer itself
-  partial init abAndC(i: Int, ...bAndCParams) {
-    bAndC.init(...bAndCParams)
-    a = 42
-  }
-}
-```
-
-#### Forwarding to super
-
-If super contains a single designated initializer subclasses can use the same syntax to forward parameters to the super initializer.  The call to super is added at the end of the initializer body.  This means that if phase 2 initialization logic is necessary it will not be possible to use the syntactic sugar.
-
-```swift
-class Base {
-  init(i: Int, s: String, f: Float) {}
-}
-
-class Derived: Base {
+  var x, y, z: Int
+  let s: String
   let d: Double
   
-  // user writes
-  init(...super) {
+  propertylist randomGroup aString s = "hello", anInt x = 42
+  
+  // user declares
+  init(...randomGroup) {
+    y = 42
+    z = 42
     d = 42
   }
   
   // compiler synthesizes
-  init(i: Int, s: String, f: Float) {
+  partial init randomGroup(aString s: String = "hello", anInt x: Int = 42) {
+    self.s = s
+    self.x = x
+  }
+  init(aString s: String = "hello", anInt x: Int = 42) {
+    randomGroup.init(aString: s, anInt: x)
+    y = 42
+    z = 42
     d = 42
-    super.init(i: i, s: s, f: f)
   }
   
-  // equivalent to writing the following under the parameter forwarding proposal:
-  init(...superParams) {
-    d = 42
-    super.init(...superParams)
-  }
 }
 ```
 
-If super contains more than one initializer
+#### Using the property list attribute for memberwise intialization
 
 ```swift
 struct S {
-  let i: Int, s: String, f: Float
-}
-
-class Base {
-  init(s: S) {}
-  init(i: Int, s: String, f: Float) {}
-}
-
-class Derived: Base {
-  let d: Double = 42
-  // error: ambiguous forward to super
-  init(...super) {} 
-}
-```
-
-### Implicit partial initializers
-
-Three implicit paritial initializers exist.  They match the behavior of `public`, `internal`, and `private` memberwise intializers using the automatic property eligibility model described in the [Flexible Memberwise Initialization](https://github.com/apple/swift-evolution/blob/master/proposals/0018-flexible-memberwise-initialization.md) proposal, thus making that proposal obsolete if this proposal is accepted.  The `private` and `internal` implicit partial initializers also match the behavior of the implicit memberwise initializer if one exists for the type.
-
-```swift
-  // flexibile memberwise initialization proposal:
-  public memberwise init(...) {
-    // init all private an internal props
-  }
-  // corresponding syntax using implicit partial init and forwarding:
-  public init(...publicMemberwise) {
-    // init all private an internal props
+  @propertylist(declaredTogether) var x, y, z: Int
+  let s: String
+  let d: Double
+  
+  // user declares:
+  init(...declaredTogether) {
+    s = "hello"
+    d = 42
   }
   
-  // flexibile memberwise initialization proposal:
-  memberwise init(...) {
-    // init all private props
+  // compiler synthesizes:
+  partial init declaredTogether(x: Int, y: Int, z: Int) {
+    self.x = x
+    self.y = y
+    self.z = z
   }
-  // corresponding syntax using implicit partial init and forwarding:
-  init(...internalMemberwise) {
-    // init all private props
+  init(x: Int, y: Int, z: Int) {
+    declaredTogether.init(x: Int, y: Int, z: Int)
+    s = "hello"
+    d = 42
   }
   
-  // flexibile memberwise initialization proposal:
-  private memberwise init(...) {}
-  // corresponding syntax using implicit partial init and forwarding:
-  private init(...privateMemberwise) {}
-```
+}
+
+### Implicit property lists
+
+It may be desirable to have several implicit property lists available, such as one that includes all properties of the type.  Properties would appear in any implicit property lists in declaration order.
+
+The specific details of what implicit property lists should be available and what they should be called is a good topic for bikeshedding.
 
 ## Detailed design
 
@@ -295,16 +294,10 @@ This is a strictly additive change.  It has no impact on existing code.
 
 ## Alternatives considered
 
-I believe the basic structure of partial initialization falls naturally out of the current initialization rules.
+We could live without this syntactic sugar. There are several reasons the language is better with it:
 
-The syntax for declaring and invoking partial initializers is game for bikeshedding.
+1. It is much more convenient than manually writing memberwise partial intializers.  It does not include any unnecessary information, thus making the details more clear.  
+2. It gives us the memberwise computed tuple properties for free.  This would would not be possible when writing memberwise partial initializers manually.
+3. It scales to any new memberwise features that might make sense for a type.
 
-### Members computed tuple property
-
-Joe Groff posted the idea of using a [`members` computed tuple property](https://lists.swift.org/pipermail/swift-evolution/Week-of-Mon-20160104/005619.html) during the review of the [Flexible Memberwise Initialization](https://github.com/apple/swift-evolution/blob/master/proposals/0018-flexible-memberwise-initialization.md) proposal.  The ensuing discussion inspired me to think more deeply about how more general features could support the memberwise initialization use case.  That line of thinking eventually led me to create this proposal as well as the [Property Lists](LINK) proposal.
-
-There are a few problems with the `members` computed tuple approach:
-
-1. It uses a computed property setter to initialize `let` properties.  This is not something you can do in manually written code and just feels wrong.  Initialization, especially of `let` properties, but also the first `set` of a `var` property, should happen in an initilizer context.  Partial initializers allow for that in a much more elegant fashion than a weird special case property with a setter that is kind of an initializer.
-2. The question of how to expose default property values in initializer parameters was never answered.
-3. The question of how to provide memberwise initialization for a subset of properties was never answered.
+As always, the `propertylist` keyword is game for bikeshedding.  The use of `:` to separate the identifier from the list of properties could also be game for bikeshedding.  Also, as mentioned previously, the implicit property lists are game for bikeshedding.
