@@ -9,7 +9,7 @@
 
 This proposal introduces partial initializers.  They perform part, but not all, of phase 1 initialization for a type.  Partial initializers can only be called by designated initializers of the same type or other partial initializers of the same type.
 
-Swift-evolution thread: [Proposal Draft: Partial Initializers](https://lists.swift.org/pipermail/swift-evolution)
+Swift-evolution thread: [Proposal Draft: partial initializers](https://lists.swift.org/pipermail/swift-evolution/Week-of-Mon-20160104/006179.html)
 
 ## Motivation
 
