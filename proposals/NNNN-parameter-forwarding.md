@@ -9,7 +9,7 @@
 
 This feature introduces an automatic parameter forwarding mechanism.
 
-Swift-evolution thread: [Proposal Draft: Parameter Forwarding](https://lists.swift.org/pipermail/swift-evolution)
+Swift-evolution thread: [Proposal Draft: parameter forwarding](https://lists.swift.org/pipermail/swift-evolution/Week-of-Mon-20160104/006177.html)
 
 ## Motivation
 
