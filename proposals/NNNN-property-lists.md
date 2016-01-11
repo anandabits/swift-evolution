@@ -11,7 +11,7 @@ This proposal introduces the `propertylist` declaration.  Property lists provide
 
 NOTE: I do not love the name "property lists" for the feature or the keyword but haven't thought of anything better.  Suggestions are welcome.
 
-Swift-evolution thread: [Proposal Draft: Property Lists](https://lists.swift.org/pipermail/swift-evolution)
+Swift-evolution thread: [Proposal Draft: property lists](https://lists.swift.org/pipermail/swift-evolution/Week-of-Mon-20160104/006178.html)
 
 ## Motivation
 
