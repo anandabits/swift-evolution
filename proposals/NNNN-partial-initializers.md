@@ -17,7 +17,7 @@ Partial initializers will make it much easier to factor out common initializatio
 
 ### Memberwise initialization
 
-Partial initializers are a general feature that can work together with [Parameter Forwarding](https://github.com/anandabits/swift-evolution/edit/parameter-forwarding/proposals/NNNN-parameter-forwarding.md) and [Property Lists](LINK) to enable extremely flexible memberwise initialization.  
+Partial initializers are a general feature that can work together with [Parameter Forwarding](https://github.com/anandabits/swift-evolution/edit/parameter-forwarding/proposals/NNNN-parameter-forwarding.md) and [Property Lists](https://github.com/anandabits/swift-evolution/blob/property-lists/proposals/NNNN-property-lists.md) to enable extremely flexible memberwise initialization.  
 
 The combination of partial initializers and parameter forwarding is sufficiently powerfule to replace the explicit memberwise initializers of the [Flexible Memberwise Initialization](https://github.com/apple/swift-evolution/blob/master/proposals/0018-flexible-memberwise-initialization.md) proposal by simply adding a three implicit partial initializers.
 
@@ -301,7 +301,7 @@ The syntax for declaring and invoking partial initializers is game for bikeshedd
 
 ### Members computed tuple property
 
-Joe Groff posted the idea of using a [`members` computed tuple property](https://lists.swift.org/pipermail/swift-evolution/Week-of-Mon-20160104/005619.html) during the review of the [Flexible Memberwise Initialization](https://github.com/apple/swift-evolution/blob/master/proposals/0018-flexible-memberwise-initialization.md) proposal.  The ensuing discussion inspired me to think more deeply about how more general features could support the memberwise initialization use case.  That line of thinking eventually led me to create this proposal as well as the [Property Lists](LINK) proposal.
+Joe Groff posted the idea of using a [`members` computed tuple property](https://lists.swift.org/pipermail/swift-evolution/Week-of-Mon-20160104/005619.html) during the review of the [Flexible Memberwise Initialization](https://github.com/apple/swift-evolution/blob/master/proposals/0018-flexible-memberwise-initialization.md) proposal.  The ensuing discussion inspired me to think more deeply about how more general features could support the memberwise initialization use case.  That line of thinking eventually led me to create this proposal as well as the [Property Lists](https://github.com/anandabits/swift-evolution/blob/property-lists/proposals/NNNN-property-lists.md) proposal.
 
 There are a few problems with the `members` computed tuple approach:
 
