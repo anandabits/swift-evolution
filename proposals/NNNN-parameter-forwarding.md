@@ -1,4 +1,4 @@
-# Feature name
+# Parameter Forwarding
 
 * Proposal: [SE-NNNN](https://github.com/apple/swift-evolution/blob/master/proposals/NNNN-parameter-forwarding.md)
 * Author(s): [Matthew Johnson](https://github.com/anandabits)
