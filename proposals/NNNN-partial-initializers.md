@@ -375,12 +375,6 @@ It is possible to compose partial initializers manually.  However, in simple cas
 
 As Chris has pointed out a number of times, pure sugar features really need to pay their way in terms of making code more concise and readable.  Any solution for memberwise initialization must pass this test.  The ability to compose parital initializers with forwarding enables them to pass the test.
 
-There is another more subtle issue that initializer forwarding may help with.  This is slightly speculative, but I beleive there are implementation issues that make it very desirable (probably necessary) to determine **from the signature alone** whether initial value assignments should be synthesized at the beginning of the initializer body or not.
-
-This proposal already requires the compiler to know which properties are initialized by a partial initializer.  This means that **if** we want to suppress initial value assignment for properties initialized by a forwardee partial initializer it is possible to determine that set of properties from the signature alone.(*)  Without initializer forwarding it would not be possible to make this determiniation with regards to calls to partial initializers without scanning the body of the designated initializer.  The last section of this document addresses the issues surrounding supressing initial value assignemnt.
-
-(*) This is also a potential advantage of the "self.x" approach.
-
 Partial initializers on their own are not sufficient to support memberwise initialization.  When combined with initializer forwarding several design approaches become possible.  The rest of this section describes several possible designs.  They are not mutually exclusive.  There is significant overlap so we would not want to adopt all of them, but it might make sense to support more than one.
 
 #### Implicit partial initializer
@@ -571,8 +565,8 @@ We have several options here:
 
 1. Current behavior.  Let properties with initial values cannot be otherwise initialized.  Var properties with initial values will have their side-effect executed twice if the default is used as a default parameter value.
 2. Suppress the initial value assignment for any properties that are otherwise initialized by the initializer.  Unfortunately this requires the compiler to scan the body of the initializer before it knows what to do and it is not clear from the signature whether the initial value is used or not.
-3. Suppress the initial value assignment when forwarding to a partial initializer that initializes the property or when the property is initialized by a "self.x" parameter.  This has the advantage that the compiler can determine what to do from the signature alone.  This is also more clear to developers than #2, although perhaps not clear enough depending on your perspective.
-4. Suppress the initial value assignment when the property is initialized by a "self.x" parameter directly, or by forwarding to a partial initializer that does so.  This has the advantage that the compiler can determine what to do from the expanded signature alone without considering the body of the partial initializer.  This approach also provides the most clarity thus far as the "self.x" parameters clearly indicate initialization of the property using the value provided to the parameter.
+3. Suppress the initial value assignment when forwarding to a partial initializer that initializes the property.  This has the advantage that the compiler can determine what to do from the signature alone because it knows which properties a partial initializer will initialize.  This is also more clear to developers than #2.
+4. Suppress the initial value assignment when the property is initialized by a "self.x" parameter directly, or by forwarding to a partial initializer that does so.  This has the advantage that the compiler can determine what to do from the expanded signature alone without considering the body of partial initializers.  This approach also provides the most clarity thus far as the "self.x" parameters clearly indicate initialization of the property using the value provided to the parameter.
 5. Use the same logic as in #2 or #3 but require a declaration modifier on properties that have their initial value assignment suppressed.  The declaration modifier might be something like `def`, and indicates that the "initial value" is merely a default that may or may not be used.
 6. Do the same as #4, but also require a declaration modifier on the initializer to indicate that it is allowed to "override" the default values of properties.
 
