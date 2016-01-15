@@ -77,7 +77,7 @@ John McCall [requested](https://lists.swift.org/pipermail/swift-evolution/Week-o
 
 The proposed solution is to introduce partial initializers and (partial) initializer methods.  Because they only initialize part of an instance they are given an identifier that can be used to describe the role they play in initialization.
 
-Partial initalizers have the form `init aPartialInitializerName() {}`.  
+Partial initalizers have the form `init aPartialInitializerName() {}`
 
 Initializer methods have the form `init func anInitializationMethodName() {}`
 
