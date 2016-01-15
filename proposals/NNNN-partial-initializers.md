@@ -601,11 +601,14 @@ The good aspect of this approach is that everything is orthogonal and everything
 I believe #4 strikes a very good balance of clarity while avoiding the need for repetitive syntax.  There are only a couple of cons:
 
 1. It is not possible to tell whether the initial value of a property may be elided by looking at the property declaration alone.  One must also look at the initializer signatures if it is necessary to know this for sure.  
-2. It is not possible to prevent initial value synthesis by initializing the property in the body of an intializer.
+2. It is not possible to declare a property that will **always** receive initial value assignment.
+3. It is not possible to prevent initial value synthesis by initializing the property in the body of an intializer.
 
-The first con can be mitigated by generated headers, documentation, etc which could indicate whether this may happen in some cases.  It would also be possible to allow a declaration modifier which ensures the initial value assignment is **always** synthesized, perhaps `init` if it is considered desirable to guarantee this for certain properties.
+The first con can be mitigated by generated headers, documentation, etc which could indicate whether this may happen for a property in some cases.  
 
-I believe the second con is acceptable.  It is always possible to acheive the necessary behavior by avoiding an initial value and taking full control of initialization.
+The second con can be mitigated by introducing a declaration modifier for properties which ensures the initial value assignment is **always** synthesized, perhaps `init`.
+
+I believe the third con is acceptable.  It is always possible to acheive the necessary behavior by avoiding an initial value and taking full control of initialization.
 
 I believe the advantages of using "self.x" parameters to communicate the suppression of initial value assignment point strongly in the direction of using that approach to memberwise initialization in conjunction with partial initializers and initializer forwarding.
 
