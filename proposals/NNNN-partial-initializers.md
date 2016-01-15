@@ -392,9 +392,9 @@ struct S {
 
 There is ample opportunity to bikeshed over the name of this implicit partial initializer.  Some options would be `members`, `memberwise` or `allProperties`.
 
-I believe it is a good idea to include this implicit partial initializer if we retain an implicit memberwise initializer.  It allows us to explicitly declare the implicit memberwise intializer.  
+It might be a good idea to include this implicit partial initializer if we retain an implicit memberwise initializer.  It allows us to explicitly declare the implicit memberwise intializer.  
 
-This implicit partial initializer would be almost essential if we do not retain the implicit memberwise initializer as it would partly mitigate the boilerplate necessary to declare an initializer explicitly in the "bag of properties" use case.
+The downside of this approach (and that of the current implicit initializer) is that it is subject to breakage under re-ordering of property declarations.
 
 #### Property declaration modifier
 
@@ -418,7 +418,7 @@ class C : Derived {
 }
 ```
 
-The biggest drawback to this approach is that it does not address one of the items in "common feedback and points" presented by the core team (which I agree is an important concern):
+Like the previous approach, the biggest drawback to this approach is that it does not address one of the items in "common feedback and points" presented by the core team (which I agree is an important concern):
 
     Provide a predictable model.  It was concerning to many people 
     that you could accidentally reorder properties and break a 
@@ -433,11 +433,11 @@ It also has the limitation that it is only possible to have one memberwise parti
 
 One thing the core team liked about this approach is that the property declaration modifier makes it clear that the initial value of the property may not always be used (and any side-effects of calculating it not executed).  The last section of this document discusses options surrounding this issue.
 
-#### Property declaration modifier with identifier
+#### Property declaration modifier, take 2
 
 Several people on the list like the idea of combing property declarations with a memberwise initializer parameter list as is done in Scala and other languages.
 
-I believe a similar, but more Swifty option would be a declaration modifier intended to be used when declaraing properties in a list.  A partial initializer would be synthesized for the properties included in the declaration.  The modifier would accept an identifier to use for the name of the partial initializer.
+I believe a similar, but more Swifty option would be a declaration modifier intended to be used when declaraing properties in a list.  A partial initializer would be synthesized for the properties included in the declaration.  The modifier would accept an identifier to use for the name of the partial initializer.  
 
 ```swift
 class C : Derived {
@@ -460,7 +460,25 @@ The use cases where this apporach is viable are somewhat limited without a signi
 
 On the other hand, in many builder pattern use cases the properties we would like to include in memberwise initialization **will** share the same attributes, modifiers, and variable / constant status.
 
-I have mixed feelings about this approach; I like that it is very concise but at the same time it is definitely **not** sufficient on its own.  I am not sure whether it is worthwhile to support this **in addition** to other approaches but it is definitely not the right approach for an initial solution.
+##### Implicit `memberwise` identifier
+
+If only one list of property declarations contains the modifier, the identifier could be omitted and `memberwise` used as an implicit identifier for the partial initializer.  When used in this fashion it might also be desirable to synthesize a designated (or struct) initializer when there are no other stored property declarations, no other initializers are declared in the body of the type, and for classes `super` has a default initializer.
+
+Such an initializer would be identical to the existing implict memberwise initializer and might be a good approach for replacing it.  Unlike the existing implicit initializer, it isn't usable in larger types with many independent property declarations.  This makes it is less likely to lead to property re-ordering problems by preventing "abuse" of the implicit initializer feature.  
+
+We would pay for the increased robustness relative to the current implicit partial initializer primarily by the restriction on layout of property declarations.  If the implicit initializer is mostly intended to address the bag-of-properties types this might be an acceptable tradeoff.  
+
+We also pay with an additional declaration modifier.  However, the declaration modifier makes things explicit which is a good thing.
+
+Here is an example of what that might look like:
+
+```swift
+struct Point {
+  mwi var Point: x: Double = 0, y: Double = 0
+}
+```
+
+I like that this approach is very concise when it works (both with and without the explicit identifier).  I also like it as a more robust and explicit solution to the bag-of-properties use case.  I think it makes sense to support this **in addition** to other approaches but it is definitely **not** a complete solution.
 
 #### "self.x = x" sugar
 
