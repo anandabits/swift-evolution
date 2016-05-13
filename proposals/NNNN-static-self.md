@@ -20,7 +20,7 @@ the correct, matching type.
 
 This proposal builds on the covariant construct `Self` accepted in [SE-0068](https://github.com/apple/swift-evolution/blob/master/proposals/0068-universal-self.md)
 to introduce an invariant type identifier. It enables protocol declarations to consistently 
-refer to a type that is fixed at compile time, ensuring that subclasses can inherit 
+refer to a type that is fixed at compile time. This ensures that subclasses can inherit 
 protocol implementations without having to re-implement that code at each level of
 inheritance.
 
@@ -31,7 +31,7 @@ to the static type of that construct.
 class A: MyProtocol
 ```
 
-The invariant identifier will always refer to `A`, unlike `Self`, which is covarying and refers to
+The invariant `StaticSelf` identifier will always refer to `A`, unlike `Self`, which is covarying and refers to
 the type of the actual instance. Since multiple inheritance for non-protocol types is disallowed, 
 this establishes this invariant type identifier with no possibility for conflict.
 
@@ -48,7 +48,7 @@ extension NSURL: StringCreatable {
 }
 ```
 
-Introducing a static version of `Self` that does not covary would permit the desired conformance:
+Introducing a static, invariant version of `Self` permits the desired conformance:
 
 ```swift
 protocol StringCreatable {
@@ -68,7 +68,7 @@ extension NSURL: StringCreatable {
 
 ### Additional Utility
 
-A secondary use for StaticSelf is to refer to the type of the lexical current context without explicitly mentioning its name.  This may be useful as a shortcut when reference static members of types with very long names.  It may also be useful when code might be copied and pasted.
+The utility of `StaticSelf` is not limited to protocols. A secondary use enables code to refer to the lexical context's current type without explicitly mentioning its name. This provides a useful shortcut when referencing static type members with especially long names and when re-purposing code between types.
 
 
 ```swift
@@ -86,7 +86,7 @@ class StructWithAVeryLongName {
 
 ## Detailed Design
 
-This proposal introduces a new keyword `StaticSelf` that may be used in protocols to refer to the invariant static type of a conforming construct.  It may also be used in any lexical context which is enclosed by a type declaration, in which case it is identical to spelling out the full name of that type explicitly.
+This proposal introduces `StaticSelf`, a new keyword that may be used in protocols to refer to the invariant static type of a conforming construct.  `StaticSelf` may also be used in the lexical context of any type declaration. In such use, the keyword is identical to spelling out the full name of that type.
 
 ## Impact on existing code
 
@@ -94,4 +94,4 @@ Being additive, there should be no impact on existing code.
 
 ## Alternatives considered
 
-The keyword is not fixed at this time.  Alternatives that have been discussed include `StaticType`, `InvariantSelf`, `SelfType`, or `Type`.  The community is welcome to bikeshed on the most clear and concise name for this.
+The keyword is not fixed at this time.  Alternatives that have been discussed include `StaticType`, `InvariantSelf`, `SelfType`, or `Type`.  The community is welcome to bikeshed on the most clear and concise name for this keyword.
